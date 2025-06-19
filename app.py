@@ -1,36 +1,49 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
-from flask_sqlalchemy import SQLAlchemy
 import string
 import random
 import validators
 from datetime import datetime
 import os
+from threading import Lock
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', ''.join(random.choices(string.ascii_letters + string.digits, k=32)))
 
-# Use SQLite for both development and production
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///urls.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# In-memory storage
+class URLStore:
+    def __init__(self):
+        self.urls = {}
+        self.lock = Lock()
 
-db = SQLAlchemy(app)
-
-class URL(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    original_url = db.Column(db.String(500), nullable=False)
-    short_code = db.Column(db.String(10), unique=True, nullable=False)
-    created_date = db.Column(db.DateTime, default=datetime.utcnow)
-    clicks = db.Column(db.Integer, default=0)
-
-def generate_short_code(length=6):
-    chars = string.ascii_letters + string.digits
-    while True:
-        short_code = ''.join(random.choices(chars, k=length))
-        if not URL.query.filter_by(short_code=short_code).first():
+    def add_url(self, original_url):
+        with self.lock:
+            # Check if URL already exists
+            for short_code, data in self.urls.items():
+                if data['original_url'] == original_url:
+                    return short_code
+            
+            # Generate new short code
+            while True:
+                short_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+                if short_code not in self.urls:
+                    break
+            
+            self.urls[short_code] = {
+                'original_url': original_url,
+                'created_date': datetime.utcnow(),
+                'clicks': 0
+            }
             return short_code
 
-with app.app_context():
-    db.create_all()
+    def get_url(self, short_code):
+        return self.urls.get(short_code)
+
+    def increment_clicks(self, short_code):
+        if short_code in self.urls:
+            with self.lock:
+                self.urls[short_code]['clicks'] += 1
+
+url_store = URLStore()
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -45,18 +58,7 @@ def index():
             flash('유효한 URL을 입력해주세요.', 'error')
             return redirect(url_for('index'))
         
-        # Check if URL already exists
-        existing_url = URL.query.filter_by(original_url=original_url).first()
-        if existing_url:
-            return render_template('index.html', 
-                                short_url=f"https://vxv.kr/{existing_url.short_code}",
-                                original_url=original_url)
-        
-        short_code = generate_short_code()
-        new_url = URL(original_url=original_url, short_code=short_code)
-        db.session.add(new_url)
-        db.session.commit()
-        
+        short_code = url_store.add_url(original_url)
         return render_template('index.html', 
                             short_url=f"https://vxv.kr/{short_code}",
                             original_url=original_url)
@@ -65,22 +67,31 @@ def index():
 
 @app.route('/<short_code>')
 def redirect_to_url(short_code):
-    url_data = URL.query.filter_by(short_code=short_code).first()
+    url_data = url_store.get_url(short_code)
     if url_data:
-        url_data.clicks += 1
-        db.session.commit()
-        return redirect(url_data.original_url)
+        url_store.increment_clicks(short_code)
+        return redirect(url_data['original_url'])
     else:
         flash('잘못된 URL입니다.', 'error')
         return redirect(url_for('index'))
 
 @app.route('/stats/<short_code>')
 def stats(short_code):
-    url_data = URL.query.filter_by(short_code=short_code).first()
+    url_data = url_store.get_url(short_code)
     if url_data:
-        return render_template('stats.html', url_data=url_data)
+        return render_template('stats.html', 
+                             url_data={
+                                 'short_code': short_code,
+                                 'original_url': url_data['original_url'],
+                                 'created_date': url_data['created_date'],
+                                 'clicks': url_data['clicks']
+                             })
     flash('URL을 찾을 수 없습니다.', 'error')
     return redirect(url_for('index'))
 
-# Vercel requires a module-level app variable
+# Health check endpoint
+@app.route('/health')
+def health_check():
+    return {'status': 'healthy'}, 200
+
 app.debug = False 
