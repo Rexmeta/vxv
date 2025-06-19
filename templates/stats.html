@@ -27,6 +27,15 @@
                 <strong>클릭 수:</strong> 
                 {{ url_data.clicks }}회
             </p>
+            
+            <div class="qr-section text-center mt-4">
+                <h5>QR 코드</h5>
+                <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" class="img-fluid mb-2" style="max-width: 200px;">
+                <div>
+                    <a href="{{ url_for('download_qr', short_code=url_data.short_code) }}" 
+                       class="btn btn-sm btn-success">QR 코드 다운로드</a>
+                </div>
+            </div>
         </div>
     </div>
 

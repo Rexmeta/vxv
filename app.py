@@ -1,10 +1,13 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import string
 import random
 import validators
 from datetime import datetime
 import os
 from threading import Lock
+import qrcode
+from io import BytesIO
+import base64
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', ''.join(random.choices(string.ascii_letters + string.digits, k=32)))
@@ -43,6 +46,22 @@ class URLStore:
             with self.lock:
                 self.urls[short_code]['clicks'] += 1
 
+def generate_qr_code(url):
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    img_buffer = BytesIO()
+    img.save(img_buffer, format='PNG')
+    img_str = base64.b64encode(img_buffer.getvalue()).decode()
+    return img_str
+
 url_store = URLStore()
 
 @app.route('/', methods=['GET', 'POST'])
@@ -59,9 +78,13 @@ def index():
             return redirect(url_for('index'))
         
         short_code = url_store.add_url(original_url)
+        short_url = f"https://vxv.co.kr/{short_code}"
+        qr_code = generate_qr_code(short_url)
+        
         return render_template('index.html', 
-                            short_url=f"https://vxv.co.kr/{short_code}",
-                            original_url=original_url)
+                            short_url=short_url,
+                            original_url=original_url,
+                            qr_code=qr_code)
     
     return render_template('index.html')
 
@@ -79,14 +102,46 @@ def redirect_to_url(short_code):
 def stats(short_code):
     url_data = url_store.get_url(short_code)
     if url_data:
+        short_url = f"https://vxv.co.kr/{short_code}"
+        qr_code = generate_qr_code(short_url)
         return render_template('stats.html', 
                              url_data={
                                  'short_code': short_code,
                                  'original_url': url_data['original_url'],
                                  'created_date': url_data['created_date'],
                                  'clicks': url_data['clicks']
-                             })
+                             },
+                             qr_code=qr_code)
     flash('URL을 찾을 수 없습니다.', 'error')
+    return redirect(url_for('index'))
+
+@app.route('/qr/<short_code>')
+def download_qr(short_code):
+    url_data = url_store.get_url(short_code)
+    if url_data:
+        short_url = f"https://vxv.co.kr/{short_code}"
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(short_url)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        img_buffer = BytesIO()
+        img.save(img_buffer, format='PNG')
+        img_buffer.seek(0)
+        
+        return send_file(
+            img_buffer,
+            mimetype='image/png',
+            as_attachment=True,
+            download_name=f'qr-{short_code}.png'
+        )
+    
+    flash('잘못된 URL입니다.', 'error')
     return redirect(url_for('index'))
 
 # Health check endpoint
