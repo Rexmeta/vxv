@@ -9,12 +9,8 @@ import os
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', ''.join(random.choices(string.ascii_letters + string.digits, k=32)))
 
-# Vercel uses PostgreSQL, so we'll check for DATABASE_URL environment variable
-if os.environ.get('VERCEL_ENV') == 'production':
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///urls.db'
-
+# Use SQLite for both development and production
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///urls.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -33,10 +29,8 @@ def generate_short_code(length=6):
         if not URL.query.filter_by(short_code=short_code).first():
             return short_code
 
-# Create tables only in development
-if not os.environ.get('VERCEL_ENV'):
-    with app.app_context():
-        db.create_all()
+with app.app_context():
+    db.create_all()
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
