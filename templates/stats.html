@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="url-form">
+    <h1 class="text-center mb-4">URL 통계</h1>
+    
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">단축 URL 정보</h5>
+            <p class="card-text">
+                <strong>단축 URL:</strong> 
+                <a href="http://vxv.kr/{{ url_data.short_code }}" target="_blank">
+                    http://vxv.kr/{{ url_data.short_code }}
+                </a>
+            </p>
+            <p class="card-text">
+                <strong>원본 URL:</strong> 
+                <a href="{{ url_data.original_url }}" target="_blank">
+                    {{ url_data.original_url }}
+                </a>
+            </p>
+            <p class="card-text">
+                <strong>생성일:</strong> 
+                {{ url_data.created_date.strftime('%Y-%m-%d %H:%M:%S') }}
+            </p>
+            <p class="card-text">
+                <strong>클릭 수:</strong> 
+                {{ url_data.clicks }}회
+            </p>
+        </div>
+    </div>
+
+    <div class="text-center mt-3">
+        <a href="{{ url_for('index') }}" class="btn btn-primary">홈으로 돌아가기</a>
+    </div>
+</div>
+{% endblock %} 
