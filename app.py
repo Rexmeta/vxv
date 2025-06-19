@@ -60,7 +60,7 @@ def index():
         
         short_code = url_store.add_url(original_url)
         return render_template('index.html', 
-                            short_url=f"https://vxv.kr/{short_code}",
+                            short_url=f"https://vxv.co.kr/{short_code}",
                             original_url=original_url)
     
     return render_template('index.html')
